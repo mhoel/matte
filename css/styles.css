@@ -385,6 +385,298 @@ body {
   color: var(--text-main);
 }
 
+.word-helper-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.word-helper-row:empty {
+  display: none;
+}
+
+.word-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  background: #F1F5F9;
+  border: 1px solid #CBD5E1;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.word-chip strong {
+  color: #1E3A8A;
+  font-weight: 800;
+}
+
+/* Interactive Expansion Calculation Inputs */
+.expansion-calc-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.expansion-calc-grid {
+  display: inline-grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 4px;
+  background: #FFFFFF;
+  padding: 12px 18px;
+  border-radius: 14px;
+  border: 2px solid #BFDBFE;
+  box-shadow: var(--shadow-sm);
+}
+
+.calc-row-label {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.calc-row-expr {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #0F172A;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.frac-calc-input {
+  width: 72px;
+  height: 46px;
+  border-radius: 10px;
+  border: 3px solid #93C5FD;
+  background: #F8FAFC;
+  color: #0F172A;
+  font-family: inherit;
+  font-size: 1.45rem;
+  font-weight: 900;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.frac-calc-input:focus,
+.frac-calc-input.is-active-field {
+  border-color: var(--primary);
+  background: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.frac-calc-input.is-field-ok {
+  border-color: #16A34A;
+  background: #DCFCE7;
+  color: #14532D;
+}
+
+.frac-calc-input.is-field-wrong {
+  border-color: #EF4444;
+  background: #FEE2E2;
+  color: #991B1B;
+  animation: gentleShake 0.38s ease;
+}
+
+.frac-calc-divider {
+  grid-column: 3;
+  height: 4px;
+  width: 100%;
+  background: #0F172A;
+  border-radius: 2px;
+  margin: 2px 0;
+}
+
+.numpad-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 480px;
+}
+
+.numpad-btn {
+  min-width: 40px;
+  min-height: 42px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 2px solid #BFDBFE;
+  background: #FFFFFF;
+  color: #0F172A;
+  font-family: inherit;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
+}
+
+.numpad-btn:hover {
+  background: #DBEAFE;
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.numpad-btn:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.numpad-btn.is-erase {
+  background: #F1F5F9;
+  border-color: var(--border-strong);
+  color: var(--text-muted);
+}
+
+.numpad-action-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Early Bar Observation Card (Step 3) */
+.bars-observe-card {
+  background: #FFFBEB;
+  border: 2px solid #FDE68A;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bars-observe-prompt {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #92400E;
+}
+
+.bars-observe-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-observe-choice {
+  min-height: 42px;
+  padding: 7px 14px;
+  border-radius: 12px;
+  border: 2px solid #FCD34D;
+  background: #FFFFFF;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background-color 0.14s ease, border-color 0.14s ease, transform 0.12s ease;
+}
+
+.btn-observe-choice:hover {
+  border-color: #D97706;
+  background: #FEF9C3;
+  transform: translateY(-1px);
+}
+
+.btn-observe-choice.is-selected {
+  border-color: #D97706;
+  background: #FEF08A;
+  color: #78350F;
+}
+
+.bars-observe-reply {
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: #78350F;
+}
+
+/* Symbol Picker in Final Step */
+.comparison-symbol-char.is-pending {
+  border-style: dashed;
+  border-color: #60A5FA;
+  background: #EFF6FF;
+  color: #2563EB;
+}
+
+.comparison-symbol-char.is-wrong-symbol {
+  border-color: #EF4444;
+  background: #FEE2E2;
+  color: #991B1B;
+  animation: gentleShake 0.38s ease;
+}
+
+.comparison-symbol-char.is-solved-symbol {
+  border-color: #16A34A;
+  background: #DCFCE7;
+  color: #15803D;
+  animation: slotPop 0.26s ease;
+}
+
+.symbol-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.symbol-choice-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 2.5px solid #60A5FA;
+  background: #FFFFFF;
+  color: #0F172A;
+  font-family: inherit;
+  font-size: 1.55rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.symbol-choice-btn:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+  background: #EFF6FF;
+}
+
+.symbol-choice-btn:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.symbol-choice-btn.is-wrong-choice {
+  border-color: #EF4444;
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
+.final-answer-card.is-locked {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
+.btn-choice-big:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
 .feedback-banner {
   margin-top: 10px;
   padding: 10px 14px;
@@ -1421,6 +1713,31 @@ body {
   .mul-factor-tag {
     font-size: 1.05rem;
     padding: 1px 4px;
+  }
+
+  .fraction-column {
+    min-width: 80px;
+  }
+
+  .symbol-choice-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 1.35rem;
+  }
+
+  .expansion-calc-grid {
+    padding: 10px 12px;
+    column-gap: 8px;
+  }
+
+  .calc-row-expr {
+    font-size: 1.12rem;
+  }
+
+  .frac-calc-input {
+    width: 62px;
+    height: 42px;
+    font-size: 1.25rem;
   }
 }
 

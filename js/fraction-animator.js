@@ -11,6 +11,11 @@
   let currentContainerEl = null;
   let lastAnimatedSignature = '';
   let resizeObserverInstance = null;
+  let draftInputs = {};
+
+  function clearDrafts() {
+    draftInputs = {};
+  }
 
   function createSvgEl(tag, attrs) {
     const el = document.createElementNS(SVG_NS, tag);
@@ -81,67 +86,100 @@
     return frag;
   }
 
-  function buildExpansionChoices(origNum, origDen, factor, taskKey) {
+  function buildExpansionHint(origNum, origDen, factor, typedNum, typedDen) {
     const correctNum = origNum * factor;
     const correctDen = origDen * factor;
+    const numOk = typedNum === correctNum;
+    const denOk = typedDen === correctDen;
 
-    const options = [
-      {
-        id: 'correct',
-        num: correctNum,
-        den: correctDen,
-        isCorrect: true,
-        hint: ''
-      },
-      {
-        id: 'forgot-num',
-        num: origNum,
-        den: correctDen,
-        isCorrect: false,
-        hint:
-          'Nesten! Nevneren ' +
-          correctDen +
-          ' er helt riktig, men husk å gange telleren øverst med ' +
-          factor +
-          ' også (' +
-          origNum +
-          ' × ' +
-          factor +
-          ').'
-      },
-      {
-        id: 'added-instead',
-        num: origNum + factor,
-        den: origDen + factor,
-        isCorrect: false,
-        hint:
-          'Pass på! Her ble det lagt sammen (+) i stedet for å gange (×). Regn ut ' +
-          origNum +
-          ' × ' +
-          factor +
-          ' øverst og ' +
-          origDen +
-          ' × ' +
-          factor +
-          ' nederst!'
-      }
-    ];
-
-    // Deterministisk rekkefølge per oppgave og steg så knappene ikke hopper ved ny tegning
-    let hash = 0;
-    for (let i = 0; i < taskKey.length; i += 1) {
-      hash = (hash * 31 + taskKey.charCodeAt(i)) % 997;
+    if (typedNum === origNum && denOk && factor > 1) {
+      return (
+        'Nesten! Nevneren ' +
+        correctDen +
+        ' er riktig, men husk å gange telleren øverst med ' +
+        factor +
+        ' også (' +
+        origNum +
+        ' × ' +
+        factor +
+        ').'
+      );
     }
-    const orders = [
-      [1, 0, 2],
-      [0, 2, 1],
-      [2, 1, 0],
-      [0, 1, 2]
-    ];
-    const order = orders[hash % orders.length];
-    return order.map(function (idx) {
-      return options[idx];
-    });
+    if (numOk && typedDen === origDen && factor > 1) {
+      return (
+        'Nesten! Telleren ' +
+        correctNum +
+        ' er riktig, men husk å gange nevneren nederst med ' +
+        factor +
+        ' også (' +
+        origDen +
+        ' × ' +
+        factor +
+        ').'
+      );
+    }
+    if (
+      (typedNum === origNum + factor && typedNum !== correctNum) ||
+      (typedDen === origDen + factor && typedDen !== correctDen)
+    ) {
+      return (
+        'Pass på! Her la du sammen (+) i stedet for å gange (×). Regn ut ' +
+        origNum +
+        ' × ' +
+        factor +
+        ' øverst og ' +
+        origDen +
+        ' × ' +
+        factor +
+        ' nederst!'
+      );
+    }
+    if (typedNum === correctDen && typedDen === correctNum && correctNum !== correctDen) {
+      return (
+        'Riktige tall, men byttet plass! Telleren (' +
+        origNum +
+        ' × ' +
+        factor +
+        ') skal stå øverst, og nevneren (' +
+        origDen +
+        ' × ' +
+        factor +
+        ') nederst.'
+      );
+    }
+    if (denOk && !numOk) {
+      return (
+        'Nevneren ' +
+        correctDen +
+        ' nederst er helt riktig! Sjekk telleren øverst på nytt: hva er ' +
+        origNum +
+        ' × ' +
+        factor +
+        '?'
+      );
+    }
+    if (numOk && !denOk) {
+      return (
+        'Telleren ' +
+        correctNum +
+        ' øverst er helt riktig! Sjekk nevneren nederst på nytt: hva er ' +
+        origDen +
+        ' × ' +
+        factor +
+        '?'
+      );
+    }
+    return (
+      'Prøv igjen! Regn ut ' +
+      origNum +
+      ' × ' +
+      factor +
+      ' øverst (teller) og ' +
+      origDen +
+      ' × ' +
+      factor +
+      ' nederst (nevner).'
+    );
   }
 
   function renderFractionBarSvg(opts) {
@@ -652,50 +690,384 @@
     }
   }
 
-  function renderExpansionQuizCard(questionHtml, choices, onChoose) {
+  function renderEarlyBarObservationCard(math, stepState, callbacks) {
+    const card = document.createElement('div');
+    card.className = 'bars-observe-card';
+
+    const prompt = document.createElement('p');
+    prompt.className = 'bars-observe-prompt';
+    prompt.textContent = '👀 Se på lengden av brøkstavene over – hva ser du med øyemål?';
+    card.appendChild(prompt);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'bars-observe-btns';
+
+    const options = [
+      {
+        id: 'left',
+        label: math.fruitMeta.emoji + ' ' + math.leftNum + '/' + math.leftDen + ' ser lengst ut'
+      },
+      {
+        id: 'right',
+        label: '📏 ' + math.rightNum + '/' + math.rightDen + ' ser lengst ut'
+      },
+      {
+        id: 'close',
+        label: '🤔 Nesten helt likt!'
+      }
+    ];
+
+    options.forEach(function (opt) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className =
+        'btn-observe-choice' + (stepState.barObservation === opt.id ? ' is-selected' : '');
+      btn.setAttribute('aria-pressed', stepState.barObservation === opt.id ? 'true' : 'false');
+      btn.textContent = opt.label;
+      btn.addEventListener('click', function () {
+        if (callbacks && typeof callbacks.onBarObservation === 'function') {
+          callbacks.onBarObservation(opt.id);
+        }
+      });
+      btnRow.appendChild(btn);
+    });
+    card.appendChild(btnRow);
+
+    if (stepState.barObservation) {
+      const reply = document.createElement('p');
+      reply.className = 'bars-observe-reply';
+      const actualLonger =
+        math.leftExpandedNum > math.rightExpandedNum
+          ? 'left'
+          : math.leftExpandedNum < math.rightExpandedNum
+            ? 'right'
+            : 'equal';
+
+      if (stepState.barObservation === 'close') {
+        reply.textContent =
+          'Ja, stavene er skikkelig jevne! I neste steg deler vi dem i like store biter så vi ser svaret helt sikkert.';
+      } else if (stepState.barObservation === actualLonger) {
+        reply.textContent =
+          'Skarpt blikk! Den er litt lengre – i neste steg deler vi i like store biter så vi kan bevise det helt nøyaktig!';
+      } else {
+        reply.textContent =
+          'Det er fort gjort å bli lurt på øyemål når stavene er så tette! I neste steg deler vi i like store biter og sjekker.';
+      }
+      card.appendChild(reply);
+    }
+
+    return card;
+  }
+
+  function renderExpansionInputCard(opts) {
+    const taskKey = opts.taskKey;
+    const origNum = opts.origNum;
+    const origDen = opts.origDen;
+    const factor = opts.factor;
+    const onSolved = opts.onSolved;
+    const onWrong = opts.onWrong;
+
+    const correctNum = origNum * factor;
+    const correctDen = origDen * factor;
+
+    if (!draftInputs[taskKey]) {
+      draftInputs[taskKey] = {
+        num: '',
+        den: '',
+        activeField: 'num',
+        numState: '',
+        denState: ''
+      };
+    }
+    const draft = draftInputs[taskKey];
+
     const quizBox = document.createElement('div');
     quizBox.className = 'expansion-quiz-card';
 
     const prompt = document.createElement('p');
     prompt.className = 'expansion-quiz-prompt';
-    prompt.innerHTML = questionHtml;
+    prompt.innerHTML = opts.questionHtml;
     quizBox.appendChild(prompt);
 
-    const btnRow = document.createElement('div');
-    btnRow.className = 'expansion-choices-row';
+    const body = document.createElement('div');
+    body.className = 'expansion-calc-body';
 
-    choices.forEach(function (choice) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'fraction-choice-btn';
-      btn.setAttribute('aria-label', choice.num + ' over ' + choice.den);
+    const grid = document.createElement('div');
+    grid.className = 'expansion-calc-grid';
 
-      const numS = document.createElement('span');
-      numS.className = 'choice-frac-num';
-      numS.textContent = String(choice.num);
+    const numLabel = document.createElement('label');
+    numLabel.className = 'calc-row-label';
+    const numInputId = 'calc-num-' + taskKey;
+    numLabel.setAttribute('for', numInputId);
+    numLabel.textContent = 'Teller (øverst):';
 
-      const barS = document.createElement('span');
-      barS.className = 'choice-frac-bar';
+    const numExpr = document.createElement('span');
+    numExpr.className = 'calc-row-expr';
+    numExpr.textContent = origNum + ' × ' + factor + ' =';
 
-      const denS = document.createElement('span');
-      denS.className = 'choice-frac-den';
-      denS.textContent = String(choice.den);
+    const numInput = document.createElement('input');
+    numInput.type = 'text';
+    numInput.id = numInputId;
+    numInput.setAttribute('inputmode', 'numeric');
+    numInput.setAttribute('pattern', '[0-9]*');
+    numInput.setAttribute('autocomplete', 'off');
+    numInput.maxLength = 3;
+    numInput.placeholder = '?';
+    numInput.value = draft.num;
+    numInput.setAttribute('data-calc-field', 'num');
+    numInput.setAttribute(
+      'aria-label',
+      'Skriv inn ny teller: ' + origNum + ' ganger ' + factor
+    );
 
-      btn.appendChild(numS);
-      btn.appendChild(barS);
-      btn.appendChild(denS);
+    const divider = document.createElement('span');
+    divider.className = 'frac-calc-divider';
+    divider.setAttribute('aria-hidden', 'true');
 
-      btn.addEventListener('click', function () {
-        if (!choice.isCorrect) {
-          btn.classList.add('is-wrong-choice');
+    const denLabel = document.createElement('label');
+    denLabel.className = 'calc-row-label';
+    const denInputId = 'calc-den-' + taskKey;
+    denLabel.setAttribute('for', denInputId);
+    denLabel.textContent = 'Nevner (nederst):';
+
+    const denExpr = document.createElement('span');
+    denExpr.className = 'calc-row-expr';
+    denExpr.textContent = origDen + ' × ' + factor + ' =';
+
+    const denInput = document.createElement('input');
+    denInput.type = 'text';
+    denInput.id = denInputId;
+    denInput.setAttribute('inputmode', 'numeric');
+    denInput.setAttribute('pattern', '[0-9]*');
+    denInput.setAttribute('autocomplete', 'off');
+    denInput.maxLength = 3;
+    denInput.placeholder = '?';
+    denInput.value = draft.den;
+    denInput.setAttribute('data-calc-field', 'den');
+    denInput.setAttribute(
+      'aria-label',
+      'Skriv inn ny nevner: ' + origDen + ' ganger ' + factor
+    );
+
+    function syncInputClasses() {
+      numInput.className =
+        'frac-calc-input' +
+        (draft.activeField === 'num' ? ' is-active-field' : '') +
+        (draft.numState ? ' ' + draft.numState : '');
+      denInput.className =
+        'frac-calc-input' +
+        (draft.activeField === 'den' ? ' is-active-field' : '') +
+        (draft.denState ? ' ' + draft.denState : '');
+    }
+
+    function setActiveField(which, shouldFocus) {
+      draft.activeField = which;
+      syncInputClasses();
+      if (shouldFocus) {
+        const target = which === 'num' ? numInput : denInput;
+        try {
+          target.focus({ preventScroll: true });
+        } catch (e) {
+          target.focus();
         }
-        onChoose(choice);
-      });
+      }
+    }
 
-      btnRow.appendChild(btn);
+    function evaluateAttempt() {
+      const rawNum = numInput.value.trim();
+      const rawDen = denInput.value.trim();
+      draft.num = rawNum;
+      draft.den = rawDen;
+
+      if (rawNum === '' || rawDen === '') {
+        draft.numState = rawNum === '' ? 'is-field-wrong' : '';
+        draft.denState = rawDen === '' ? 'is-field-wrong' : '';
+        numInput.classList.remove('is-field-wrong');
+        denInput.classList.remove('is-field-wrong');
+        void quizBox.getBoundingClientRect();
+        setActiveField(rawNum === '' ? 'num' : 'den', true);
+        if (typeof onWrong === 'function') {
+          onWrong('Skriv inn svar både i telleren (øverst) og i nevneren (nederst) først!');
+        }
+        return;
+      }
+
+      const typedNum = parseInt(rawNum, 10);
+      const typedDen = parseInt(rawDen, 10);
+      const numOk = typedNum === correctNum;
+      const denOk = typedDen === correctDen;
+
+      if (numOk && denOk) {
+        delete draftInputs[taskKey];
+        if (typeof onSolved === 'function') {
+          onSolved();
+        }
+        return;
+      }
+
+      draft.numState = numOk ? 'is-field-ok' : 'is-field-wrong';
+      draft.denState = denOk ? 'is-field-ok' : 'is-field-wrong';
+      numInput.classList.remove('is-field-wrong');
+      denInput.classList.remove('is-field-wrong');
+      void quizBox.getBoundingClientRect();
+
+      const focusTarget = !numOk ? 'num' : 'den';
+      setActiveField(focusTarget, true);
+      const wrongEl = focusTarget === 'num' ? numInput : denInput;
+      if (typeof wrongEl.select === 'function') {
+        wrongEl.select();
+      }
+
+      if (typeof onWrong === 'function') {
+        onWrong(buildExpansionHint(origNum, origDen, factor, typedNum, typedDen));
+      }
+    }
+
+    numInput.addEventListener('focus', function () {
+      draft.activeField = 'num';
+      syncInputClasses();
+    });
+    denInput.addEventListener('focus', function () {
+      draft.activeField = 'den';
+      syncInputClasses();
     });
 
-    quizBox.appendChild(btnRow);
+    numInput.addEventListener('input', function () {
+      numInput.value = numInput.value.replace(/[^0-9]/g, '');
+      draft.num = numInput.value;
+      if (draft.numState === 'is-field-wrong') {
+        draft.numState = '';
+        syncInputClasses();
+      }
+    });
+    denInput.addEventListener('input', function () {
+      denInput.value = denInput.value.replace(/[^0-9]/g, '');
+      draft.den = denInput.value;
+      if (draft.denState === 'is-field-wrong') {
+        draft.denState = '';
+        syncInputClasses();
+      }
+    });
+
+    numInput.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        if (denInput.value.trim() === '') {
+          setActiveField('den', true);
+        } else {
+          evaluateAttempt();
+        }
+      }
+    });
+    denInput.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        if (numInput.value.trim() === '') {
+          setActiveField('num', true);
+        } else {
+          evaluateAttempt();
+        }
+      }
+    });
+
+    syncInputClasses();
+
+    grid.appendChild(numLabel);
+    grid.appendChild(numExpr);
+    grid.appendChild(numInput);
+    grid.appendChild(divider);
+    grid.appendChild(denLabel);
+    grid.appendChild(denExpr);
+    grid.appendChild(denInput);
+    body.appendChild(grid);
+
+    // Tallknapper for enkel bruk på nettbrett, mus og Smartboard
+    const numpad = document.createElement('div');
+    numpad.className = 'numpad-bar';
+    numpad.setAttribute('role', 'group');
+    numpad.setAttribute('aria-label', 'Tallknapper');
+
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].forEach(function (digit) {
+      const dBtn = document.createElement('button');
+      dBtn.type = 'button';
+      dBtn.className = 'numpad-btn';
+      dBtn.textContent = digit;
+      dBtn.addEventListener('mousedown', function (ev) {
+        ev.preventDefault();
+      });
+      dBtn.addEventListener('click', function () {
+        const targetEl = draft.activeField === 'den' ? denInput : numInput;
+        if (targetEl.value.length < 3) {
+          targetEl.value += digit;
+          if (draft.activeField === 'den') {
+            draft.den = targetEl.value;
+            if (draft.denState === 'is-field-wrong') {
+              draft.denState = '';
+            }
+          } else {
+            draft.num = targetEl.value;
+            if (draft.numState === 'is-field-wrong') {
+              draft.numState = '';
+            }
+          }
+          syncInputClasses();
+        }
+      });
+      numpad.appendChild(dBtn);
+    });
+
+    const eraseBtn = document.createElement('button');
+    eraseBtn.type = 'button';
+    eraseBtn.className = 'numpad-btn is-erase';
+    eraseBtn.textContent = '⌫';
+    eraseBtn.setAttribute('aria-label', 'Slett siste siffer');
+    eraseBtn.addEventListener('mousedown', function (ev) {
+      ev.preventDefault();
+    });
+    eraseBtn.addEventListener('click', function () {
+      const targetEl = draft.activeField === 'den' ? denInput : numInput;
+      targetEl.value = targetEl.value.slice(0, -1);
+      if (draft.activeField === 'den') {
+        draft.den = targetEl.value;
+        draft.denState = '';
+      } else {
+        draft.num = targetEl.value;
+        draft.numState = '';
+      }
+      syncInputClasses();
+    });
+    numpad.appendChild(eraseBtn);
+
+    const switchBtn = document.createElement('button');
+    switchBtn.type = 'button';
+    switchBtn.className = 'numpad-btn is-erase';
+    switchBtn.textContent = '↕ Bytt rute';
+    switchBtn.setAttribute('aria-label', 'Bytt mellom teller og nevner');
+    switchBtn.addEventListener('mousedown', function (ev) {
+      ev.preventDefault();
+    });
+    switchBtn.addEventListener('click', function () {
+      setActiveField(draft.activeField === 'num' ? 'den' : 'num', true);
+    });
+    numpad.appendChild(switchBtn);
+
+    body.appendChild(numpad);
+
+    const actionRow = document.createElement('div');
+    actionRow.className = 'numpad-action-row';
+
+    const checkBtn = document.createElement('button');
+    checkBtn.type = 'button';
+    checkBtn.className = 'btn btn-primary';
+    checkBtn.setAttribute('data-action', 'check-expansion');
+    checkBtn.textContent = 'Sjekk svar ✓';
+    checkBtn.addEventListener('click', function () {
+      evaluateAttempt();
+    });
+    actionRow.appendChild(checkBtn);
+
+    body.appendChild(actionRow);
+    quizBox.appendChild(body);
     return quizBox;
   }
 
@@ -807,6 +1179,10 @@
 
       wrapper.appendChild(renderVisualBarsSection(math, stepState, null));
 
+      if (allCount === math.leftDen) {
+        wrapper.appendChild(renderEarlyBarObservationCard(math, stepState, callbacks));
+      }
+
       containerEl.innerHTML = '';
       containerEl.appendChild(wrapper);
       return;
@@ -882,27 +1258,26 @@
       wrapper.appendChild(arena);
 
       if (!stepState.leftExpandedDone) {
-        const choices = buildExpansionChoices(
-          math.leftNum,
-          math.leftDen,
-          math.leftFactor,
-          math.task.id + '-left'
-        );
-        const quizEl = renderExpansionQuizCard(
-          'Vi ganger både teller og nevner med <strong>' +
+        const quizEl = renderExpansionInputCard({
+          taskKey: math.task.id + '-left',
+          origNum: math.leftNum,
+          origDen: math.leftDen,
+          factor: math.leftFactor,
+          questionHtml:
+            'Regn ut gangestykket når vi ganger med <strong>' +
             math.leftFactor +
-            '</strong>. Hvilken brøk får vi da?',
-          choices,
-          function (picked) {
-            if (picked.isCorrect) {
-              if (callbacks && typeof callbacks.onLeftExpandedSolved === 'function') {
-                callbacks.onLeftExpandedSolved();
-              }
-            } else if (callbacks && typeof callbacks.onWrongExpansionChoice === 'function') {
-              callbacks.onWrongExpansionChoice(picked.hint);
+            '</strong>:',
+          onSolved: function () {
+            if (callbacks && typeof callbacks.onLeftExpandedSolved === 'function') {
+              callbacks.onLeftExpandedSolved();
+            }
+          },
+          onWrong: function (hint) {
+            if (callbacks && typeof callbacks.onWrongExpansionChoice === 'function') {
+              callbacks.onWrongExpansionChoice(hint);
             }
           }
-        );
+        });
         wrapper.appendChild(quizEl);
       }
 
@@ -1016,27 +1391,26 @@
       wrapper.appendChild(arena);
 
       if (!stepState.rightExpandedDone) {
-        const choices = buildExpansionChoices(
-          math.rightNum,
-          math.rightDen,
-          math.rightFactor,
-          math.task.id + '-right'
-        );
-        const quizEl = renderExpansionQuizCard(
-          'Nå ganger vi teller og nevner i den andre brøken med <strong>' +
+        const quizEl = renderExpansionInputCard({
+          taskKey: math.task.id + '-right',
+          origNum: math.rightNum,
+          origDen: math.rightDen,
+          factor: math.rightFactor,
+          questionHtml:
+            'Regn ut andre brøk når vi ganger med <strong>' +
             math.rightFactor +
-            '</strong>. Hva får vi?',
-          choices,
-          function (picked) {
-            if (picked.isCorrect) {
-              if (callbacks && typeof callbacks.onRightExpandedSolved === 'function') {
-                callbacks.onRightExpandedSolved();
-              }
-            } else if (callbacks && typeof callbacks.onWrongExpansionChoice === 'function') {
-              callbacks.onWrongExpansionChoice(picked.hint);
+            '</strong>:',
+          onSolved: function () {
+            if (callbacks && typeof callbacks.onRightExpandedSolved === 'function') {
+              callbacks.onRightExpandedSolved();
+            }
+          },
+          onWrong: function (hint) {
+            if (callbacks && typeof callbacks.onWrongExpansionChoice === 'function') {
+              callbacks.onWrongExpansionChoice(hint);
             }
           }
-        );
+        });
         wrapper.appendChild(quizEl);
       }
 
@@ -1095,37 +1469,89 @@
     leftFinalFrac.querySelector('[data-part="final-left-num"]').classList.add('is-highlighted-num');
     leftFinalCol.appendChild(leftFinalFrac);
 
-    // Sammenligningssymbol i midten (<, > eller =)
+    // Sammenligningssymbol i midten – barnet velger <, = eller > selv før svaret avsløres!
+    const symbolSolved = stepState.comparisonSymbolChoice === math.comparisonSymbol;
+    const hasWrongSymbol =
+      stepState.comparisonSymbolChoice !== null && !symbolSolved;
+
     const cmpCenter = document.createElement('div');
     cmpCenter.className = 'comparison-symbol-box';
 
     const cmpSign = document.createElement('span');
-    cmpSign.className = 'comparison-symbol-char';
-    cmpSign.textContent = math.comparisonSymbol;
-    cmpSign.setAttribute(
-      'aria-label',
-      math.comparisonSymbol === '<'
-        ? 'er mindre enn'
-        : math.comparisonSymbol === '>'
-          ? 'er større enn'
-          : 'er lik'
-    );
+    cmpSign.className =
+      'comparison-symbol-char' +
+      (symbolSolved
+        ? ' is-solved-symbol'
+        : hasWrongSymbol
+          ? ' is-wrong-symbol'
+          : ' is-pending');
+
+    if (symbolSolved) {
+      cmpSign.textContent = math.comparisonSymbol;
+      cmpSign.setAttribute(
+        'aria-label',
+        math.comparisonSymbol === '<'
+          ? 'er mindre enn'
+          : math.comparisonSymbol === '>'
+            ? 'er større enn'
+            : 'er lik'
+      );
+    } else if (hasWrongSymbol) {
+      cmpSign.textContent = stepState.comparisonSymbolChoice;
+      cmpSign.setAttribute('aria-label', 'Feil tegn valgt, prøv på nytt');
+    } else {
+      cmpSign.textContent = '?';
+      cmpSign.setAttribute('aria-label', 'Ukjent sammenligningstegn');
+    }
     cmpCenter.appendChild(cmpSign);
 
-    const cmpCaption = document.createElement('span');
-    cmpCaption.className = 'comparison-symbol-caption';
-    cmpCaption.textContent =
-      math.leftExpandedNum +
-      ' biter ' +
-      (math.leftExpandedNum < math.rightExpandedNum
-        ? 'er færre enn'
-        : math.leftExpandedNum > math.rightExpandedNum
-          ? 'er flere enn'
-          : 'er like mange som') +
-      ' ' +
-      math.rightExpandedNum +
-      ' biter';
-    cmpCenter.appendChild(cmpCaption);
+    if (!symbolSolved) {
+      const pickerRow = document.createElement('div');
+      pickerRow.className = 'symbol-picker-row';
+      pickerRow.setAttribute('role', 'group');
+      pickerRow.setAttribute('aria-label', 'Velg sammenligningstegn');
+
+      [
+        { sym: '<', label: 'Mindre enn (<)' },
+        { sym: '=', label: 'Lik (=)' },
+        { sym: '>', label: 'Større enn (>)' }
+      ].forEach(function (entry) {
+        const sBtn = document.createElement('button');
+        sBtn.type = 'button';
+        const isThisWrong = stepState.comparisonSymbolChoice === entry.sym;
+        sBtn.className = 'symbol-choice-btn' + (isThisWrong ? ' is-wrong-choice' : '');
+        sBtn.setAttribute('data-compare-symbol', entry.sym);
+        sBtn.setAttribute('aria-label', entry.label);
+        sBtn.textContent = entry.sym;
+        sBtn.addEventListener('click', function () {
+          if (callbacks && typeof callbacks.onSymbolChoice === 'function') {
+            callbacks.onSymbolChoice(entry.sym);
+          }
+        });
+        pickerRow.appendChild(sBtn);
+      });
+      cmpCenter.appendChild(pickerRow);
+
+      const cmpCaption = document.createElement('span');
+      cmpCaption.className = 'comparison-symbol-caption';
+      cmpCaption.textContent = '1. Velg riktig tegn!';
+      cmpCenter.appendChild(cmpCaption);
+    } else {
+      const cmpCaption = document.createElement('span');
+      cmpCaption.className = 'comparison-symbol-caption';
+      cmpCaption.textContent =
+        math.leftExpandedNum +
+        ' biter ' +
+        (math.leftExpandedNum < math.rightExpandedNum
+          ? 'er færre enn'
+          : math.leftExpandedNum > math.rightExpandedNum
+            ? 'er flere enn'
+            : 'er like mange som') +
+        ' ' +
+        math.rightExpandedNum +
+        ' biter';
+      cmpCenter.appendChild(cmpCaption);
+    }
 
     // Høyre brøk med fellesnevner
     const rightFinalCol = document.createElement('div');
@@ -1157,23 +1583,31 @@
     // Visuelle brøkstaver med lik inndeling
     wrapper.appendChild(renderVisualBarsSection(math, stepState, null));
 
-    // Sant / Usant svarkort
-    const isSolved = stepState.finalAnswer === math.isTrue;
+    // Sant / Usant svarkort (låses opp når sammenligningstegnet er riktig valgt)
+    const isSolved = symbolSolved && stepState.finalAnswer === math.isTrue;
     const answerCard = document.createElement('div');
-    answerCard.className = 'final-answer-card' + (isSolved ? ' is-solved' : '');
+    answerCard.className =
+      'final-answer-card' +
+      (isSolved ? ' is-solved' : '') +
+      (!symbolSolved ? ' is-locked' : '');
 
     const answerQuestion = document.createElement('p');
     answerQuestion.className = 'final-answer-prompt';
-    answerQuestion.innerHTML =
-      'Påstanden var: <strong>«' +
-      math.operatorText +
-      ' ' +
-      math.rightNum +
-      '/' +
-      math.rightDen +
-      ' av fruktene på fatet er ' +
-      math.fruitMeta.labelPlural +
-      '.»</strong> Er det sant eller usant?';
+    if (!symbolSolved) {
+      answerQuestion.innerHTML =
+        '2. Velg riktig tegn (<strong>&lt;</strong>, <strong>=</strong> eller <strong>&gt;</strong>) mellom brøkene over først, så åpnes spørsmålet her!';
+    } else {
+      answerQuestion.innerHTML =
+        '2. Påstand: <strong>«' +
+        math.operatorText +
+        ' ' +
+        math.rightNum +
+        '/' +
+        math.rightDen +
+        ' av fruktene på fatet er ' +
+        math.fruitMeta.labelPlural +
+        '.»</strong> Stemmer det?';
+    }
     answerCard.appendChild(answerQuestion);
 
     const btnRow = document.createElement('div');
@@ -1181,10 +1615,11 @@
 
     const btnTrue = document.createElement('button');
     btnTrue.type = 'button';
+    btnTrue.disabled = !symbolSolved;
     btnTrue.setAttribute('data-final-answer', 'true');
     btnTrue.className =
       'btn-choice-big' +
-      (stepState.finalAnswer === true
+      (symbolSolved && stepState.finalAnswer === true
         ? math.isTrue
           ? ' is-correct-final'
           : ' is-wrong-final'
@@ -1198,10 +1633,11 @@
 
     const btnFalse = document.createElement('button');
     btnFalse.type = 'button';
+    btnFalse.disabled = !symbolSolved;
     btnFalse.setAttribute('data-final-answer', 'false');
     btnFalse.className =
       'btn-choice-big' +
-      (stepState.finalAnswer === false
+      (symbolSolved && stepState.finalAnswer === false
         ? !math.isTrue
           ? ' is-correct-final'
           : ' is-wrong-final'
@@ -1351,6 +1787,7 @@
   window.BrokApp.FractionAnimator = {
     renderStage: renderStage,
     repositionArrows: repositionArrows,
-    replayAnimation: replayAnimation
+    replayAnimation: replayAnimation,
+    clearDrafts: clearDrafts
   };
 })();

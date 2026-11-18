@@ -15,8 +15,10 @@
     initialGuess: null,       // boolean | null
     countedTargetIds: [],     // klikkede målfrukter i steg 1
     countedAllIds: [],        // klikkede frukter totalt i steg 2
+    barObservation: null,     // 'left' | 'right' | 'close' | null i steg 2
     leftExpandedDone: false,  // om venstre brøk er utvidet i steg 3
     rightExpandedDone: false, // om høyre brøk er utvidet i steg 4
+    comparisonSymbolChoice: null, // '<' | '=' | '>' | null i steg 5
     finalAnswer: null,        // boolean | null i steg 5
     completedTaskIds: [],     // løste oppgaver i økten
     feedback: null,           // { type: 'info'|'success'|'warn', message: string } | null
@@ -33,6 +35,7 @@
     els.stepStepper = document.getElementById('step-stepper');
     els.guideTitle = document.getElementById('guide-title');
     els.guideText = document.getElementById('guide-text');
+    els.wordHelperRow = document.getElementById('word-helper-row');
     els.feedbackBanner = document.getElementById('feedback-banner');
     els.fruitPanelHeading = document.getElementById('fruit-panel-heading');
     els.fruitCounterPill = document.getElementById('fruit-counter-pill');
@@ -68,6 +71,12 @@
     if (window.BrokApp.Confetti && typeof window.BrokApp.Confetti.stop === 'function') {
       window.BrokApp.Confetti.stop();
     }
+    if (
+      window.BrokApp.FractionAnimator &&
+      typeof window.BrokApp.FractionAnimator.clearDrafts === 'function'
+    ) {
+      window.BrokApp.FractionAnimator.clearDrafts();
+    }
     if (typeof keepTaskIndex === 'number') {
       state.currentTaskIndex = keepTaskIndex;
     }
@@ -76,8 +85,10 @@
     state.initialGuess = null;
     state.countedTargetIds = [];
     state.countedAllIds = [];
+    state.barObservation = null;
     state.leftExpandedDone = false;
     state.rightExpandedDone = false;
+    state.comparisonSymbolChoice = null;
     state.finalAnswer = null;
     state.feedback = null;
   }
@@ -122,7 +133,10 @@
       case 4:
         return state.rightExpandedDone;
       case 5:
-        return state.finalAnswer === math.isTrue;
+        return (
+          state.comparisonSymbolChoice === math.comparisonSymbol &&
+          state.finalAnswer === math.isTrue
+        );
       default:
         return false;
     }
@@ -183,9 +197,9 @@
     switch (step) {
       case 0:
         return {
-          title: 'Steg 1: Hva tror du før vi regner?',
+          title: 'Steg 1: Gjett først!',
           text:
-            'Se på fruktfatet under! Tror du det er sant eller usant at ' +
+            'Se på fruktfatet! Tror du det stemmer at ' +
             math.operatorLower +
             ' ' +
             math.rightNum +
@@ -193,76 +207,137 @@
             math.rightDen +
             ' av fruktene er ' +
             plural +
-            '? Gjett gjerne først, og trykk deretter «Neste steg» for å sjekke med brøkregning!'
+            '? Gjett gjerne før vi regner!'
         };
       case 1:
         return {
-          title: 'Steg 2: Tell hvor mange ' + plural + ' det er (teller)',
+          title: 'Steg 2: Tell ' + plural + ' (teller)',
           text:
-            'Først finner vi telleren (tallet øverst i brøken). Klikk på alle ' +
+            'Klikk på alle ' +
             defPlural +
-            ' på fatet for å telle dem opp!'
+            ' på fatet. Det tallet setter vi øverst i brøken.'
         };
       case 2:
+        if (state.countedAllIds.length === math.leftDen) {
+          return {
+            title: 'Steg 3: Se på brøkstavene!',
+            text:
+              'Nå ser du stavene for ' +
+              math.leftNum +
+              '/' +
+              math.leftDen +
+              ' og ' +
+              math.rightNum +
+              '/' +
+              math.rightDen +
+              '. Hvilken farget del ser lengst ut – hva tror du nå?'
+          };
+        }
         return {
-          title: 'Steg 3: Tell alle fruktene på fatet (nevner)',
+          title: 'Steg 3: Tell all frukten (nevner)',
           text:
-            'Flott, det er ' +
+            'Flott, ' +
             math.leftNum +
             ' ' +
             (math.leftNum === 1 ? math.fruitMeta.labelSingular : plural) +
-            '! Nå finner vi nevneren (tallet nederst i brøken) ved å telle absolutt alle fruktene på fatet.'
+            '! Klikk nå på alle fruktene på fatet for å finne tallet nederst.'
         };
       case 3:
         return {
-          title: 'Steg 4: Gjør om første brøk til fellesnevner',
+          title: 'Steg 4: Lag like store biter i første brøk',
           text:
-            'Det er vanskelig å sammenligne ' +
+            'Når vi deler hver ' +
+            math.leftDen +
+            '-del i ' +
+            math.leftFactor +
+            ', og hver ' +
+            math.rightDen +
+            '-del i ' +
+            math.rightFactor +
+            ', blir alle bitene like store: ' +
+            math.commonDen +
+            '-deler! Gang teller og nevner i ' +
             math.leftNum +
             '/' +
             math.leftDen +
-            ' og ' +
-            math.rightNum +
-            '/' +
-            math.rightDen +
-            ' når bitene har ulik størrelse. Trikset er å ta nevneren i den andre brøken (' +
-            math.rightDen +
-            ') og gange med både teller og nevner i ' +
-            math.leftNum +
-            '/' +
-            math.leftDen +
-            '!'
+            ' med ' +
+            math.leftFactor +
+            '.'
         };
       case 4:
         return {
-          title: 'Steg 5: Gjør om andre brøk til samme fellesnevner',
+          title: 'Steg 5: Lag ' + math.commonDen + '-deler i andre brøk også',
           text:
-            'Nå gjør vi akkurat det samme motsatt vei! Vi tar den opprinnelige nevneren fra første brøk (' +
-            math.leftDen +
-            ') og ganger med både teller og nevner i ' +
+            'Nå deler vi hver ' +
+            math.rightDen +
+            '-del i ' +
+            math.rightFactor +
+            ' småbiter, så begge brøkene får ' +
+            math.commonDen +
+            '-deler. Gang teller og nevner i ' +
             math.rightNum +
             '/' +
             math.rightDen +
+            ' med ' +
+            math.rightFactor +
             '.'
         };
       case 5:
+        if (state.comparisonSymbolChoice !== math.comparisonSymbol) {
+          return {
+            title: 'Steg 6: Sammenlign bitene selv!',
+            text:
+              'Begge brøkene har nå like store biter (' +
+              math.commonDen +
+              '-deler). Velg først riktig tegn (<, = eller >), og svar så sant eller usant!'
+          };
+        }
         return {
-          title: 'Steg 6: Sammenlign brøkene og svar på påstanden!',
+          title: 'Steg 6: Er påstanden sann eller usann?',
           text:
-            'Se så lett det ble nå som begge brøkene er delt i ' +
-            math.commonDen +
-            '-deler! Sammenlign ' +
-            math.leftExpandedNum +
-            '/' +
-            math.commonDen +
-            ' og ' +
-            math.rightExpandedNum +
-            '/' +
-            math.commonDen +
-            ', og svar på om påstanden er sann eller usann.'
+            'Bra sammenlignet! Sjekk påstanden øverst og svar om den er sann eller usann.'
         };
       default:
         return { title: '', text: '' };
+    }
+  }
+
+  function getGlossaryItems(step, math) {
+    switch (step) {
+      case 0:
+        return [
+          { term: 'Påstand', desc: 'en setning vi sjekker om er sann eller usann' }
+        ];
+      case 1:
+        return [
+          { term: 'Teller', desc: 'tallet øverst i brøken (antallet vi teller)' }
+        ];
+      case 2:
+        return [
+          { term: 'Teller', desc: 'tallet øverst' },
+          { term: 'Nevner', desc: 'tallet nederst (alle i alt)' }
+        ];
+      case 3:
+        return [
+          { term: 'Teller', desc: 'øverst' },
+          { term: 'Nevner', desc: 'nederst' },
+          { term: 'Utvide', desc: 'dele i flere småbiter' },
+          { term: 'Fellesnevner', desc: 'likt tall nederst (like store biter)' }
+        ];
+      case 4:
+        return [
+          { term: 'Teller', desc: 'øverst' },
+          { term: 'Nevner', desc: 'nederst' },
+          { term: 'Utvide', desc: 'dele i flere småbiter' },
+          { term: 'Fellesnevner', desc: 'begge brøker får ' + math.commonDen + ' nederst' }
+        ];
+      case 5:
+        return [
+          { term: 'Teller', desc: 'øverst (antall biter)' },
+          { term: '< og >', desc: 'gapet peker alltid mot det største tallet' }
+        ];
+      default:
+        return [];
     }
   }
 
@@ -381,6 +456,23 @@
     const copy = getGuideCopy(state.step, math);
     els.guideTitle.textContent = copy.title;
     els.guideText.textContent = copy.text;
+
+    if (els.wordHelperRow) {
+      els.wordHelperRow.innerHTML = '';
+      const glossary = getGlossaryItems(state.step, math);
+      glossary.forEach(function (item) {
+        const chip = document.createElement('span');
+        chip.className = 'word-chip';
+        const strong = document.createElement('strong');
+        strong.textContent = '📖 ' + item.term + ':';
+        const desc = document.createElement('span');
+        desc.textContent = item.desc;
+        chip.appendChild(strong);
+        chip.appendChild(desc);
+        els.wordHelperRow.appendChild(chip);
+      });
+    }
+
     renderFeedback();
   }
 
@@ -464,13 +556,9 @@
         if (state.countedAllIds.length === math.leftDen) {
           setFeedback(
             'success',
-            'Perfekt! Det er ' +
+            'Perfekt, ' +
               math.leftDen +
-              ' frukter til sammen på fatet. Brøken vår er ' +
-              math.leftNum +
-              '/' +
-              math.leftDen +
-              '!'
+              ' frukter til sammen! Se nå på de to brøkstavene til høyre – hvilken ser lengst ut?'
           );
         } else {
           setFeedback(
@@ -612,13 +700,9 @@
             return f.id;
           }),
           'countedAllIds',
-          'Perfekt! Det er ' +
+          'Perfekt, ' +
             math.leftDen +
-            ' frukter til sammen, så brøken blir ' +
-            math.leftNum +
-            '/' +
-            math.leftDen +
-            '.'
+            ' frukter! Se på de to brøkstavene til høyre før du går videre.'
         );
       });
       els.fruitActions.appendChild(btnAutoAll);
@@ -872,11 +956,17 @@
           initialGuess: state.initialGuess,
           countedTargetCount: state.countedTargetIds.length,
           countedAllCount: state.countedAllIds.length,
+          barObservation: state.barObservation,
           leftExpandedDone: state.leftExpandedDone,
           rightExpandedDone: state.rightExpandedDone,
+          comparisonSymbolChoice: state.comparisonSymbolChoice,
           finalAnswer: state.finalAnswer
         },
         {
+          onBarObservation: function (obsChoice) {
+            state.barObservation = obsChoice;
+            renderAll();
+          },
           onLeftExpandedSolved: function () {
             state.leftExpandedDone = true;
             setFeedback(
@@ -885,11 +975,11 @@
                 math.leftNum +
                 '/' +
                 math.leftDen +
-                ' er akkurat like mye som ' +
+                ' = ' +
                 math.leftExpandedNum +
                 '/' +
                 math.commonDen +
-                '. Se hvordan brøkstaven fikk mindre biter uten å endre lengde!'
+                '. Brøkstaven fikk flere småbiter uten å endre lengde!'
             );
             renderAll();
           },
@@ -901,20 +991,60 @@
                 math.rightNum +
                 '/' +
                 math.rightDen +
-                ' er akkurat like mye som ' +
+                ' = ' +
                 math.rightExpandedNum +
                 '/' +
                 math.commonDen +
-                '. Nå har begge brøkene nevneren ' +
+                '. Nå har begge brøkene ' +
                 math.commonDen +
-                '!'
+                '-deler!'
             );
             renderAll();
           },
           onWrongExpansionChoice: function (hintMessage) {
             setFeedback('warn', hintMessage);
           },
+          onSymbolChoice: function (chosenSym) {
+            state.comparisonSymbolChoice = chosenSym;
+            if (chosenSym === math.comparisonSymbol) {
+              setFeedback(
+                'success',
+                'Riktig tegn! ' +
+                  math.leftExpandedNum +
+                  ' biter er ' +
+                  (chosenSym === '<'
+                    ? 'færre enn'
+                    : chosenSym === '>'
+                      ? 'flere enn'
+                      : 'like mange som') +
+                  ' ' +
+                  math.rightExpandedNum +
+                  ' biter. Svar nå Sant eller Usant under!'
+              );
+            } else if (chosenSym === '=') {
+              setFeedback(
+                'warn',
+                'Ikke helt likt! Se på tellerne øverst: ' +
+                  math.leftExpandedNum +
+                  ' biter og ' +
+                  math.rightExpandedNum +
+                  ' biter er ikke like mange.'
+              );
+            } else {
+              setFeedback(
+                'warn',
+                'Nesten, men tegnet peker feil vei! Husk at gapet på tegnet alltid gaper mot det største tallet (' +
+                  Math.max(math.leftExpandedNum, math.rightExpandedNum) +
+                  ').'
+              );
+            }
+            renderAll();
+          },
           onFinalAnswer: function (chosenBool) {
+            if (state.comparisonSymbolChoice !== math.comparisonSymbol) {
+              setFeedback('info', 'Velg riktig tegn (<, = eller >) mellom brøkene først!');
+              return;
+            }
             state.finalAnswer = chosenBool;
             if (chosenBool === math.isTrue) {
               markActiveTaskCompleted();
@@ -943,17 +1073,11 @@
             } else {
               setFeedback(
                 'warn',
-                'Nesten! Se på tellerne øverst: vi har ' +
+                'Nesten! Vi har ' +
                   math.leftExpandedNum +
-                  ' biter for ' +
-                  math.fruitMeta.labelPlural +
-                  ' mot ' +
+                  ' biter mot ' +
                   math.rightExpandedNum +
-                  ' biter for ' +
-                  math.rightNum +
-                  '/' +
-                  math.rightDen +
-                  '. Er ' +
+                  ' biter. Er ' +
                   math.leftExpandedNum +
                   ' ' +
                   math.operatorLower +
@@ -1020,7 +1144,7 @@
           } else if (state.step === 2) {
             els.navHint.textContent = 'Tell alle 10 fruktene først';
           } else if (state.step === 3 || state.step === 4) {
-            els.navHint.textContent = 'Velg riktig svar på gangestykket for å gå videre';
+            els.navHint.textContent = 'Regn ut teller og nevner og trykk «Sjekk svar»';
           }
         } else {
           els.navHint.textContent = 'Klar for neste steg!';
@@ -1039,8 +1163,11 @@
         els.navHint.textContent = 'Alle oppgavene er prøvd!';
       } else {
         els.btnNext.disabled = true;
-        els.btnNext.textContent = 'Svar Sant eller Usant';
-        els.navHint.textContent = 'Velg Sant eller Usant for å fullføre';
+        els.btnNext.textContent = 'Fullfør sammenligningen';
+        els.navHint.textContent =
+          state.comparisonSymbolChoice !== math.comparisonSymbol
+            ? '1. Velg <, = eller > mellom brøkene først'
+            : '2. Velg nå Sant eller Usant';
       }
     }
   }
